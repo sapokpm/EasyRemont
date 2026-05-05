@@ -600,9 +600,9 @@ const AIAdvisorPanel = ({ roomData, furniture, appliedStyle, t, onClose }) => {
     setInput("");
     setLoading(true);
 
-    const apiKey = import.meta.env.VITE_OPENAI_API_KEY;
-    if (!apiKey || apiKey.startsWith("sk-your")) {
-      setMessages(prev => [...prev, { role: "assistant", content: "Please add VITE_OPENAI_API_KEY to your .env.local file to enable AI advice." }]);
+    const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
+    if (!apiKey) {
+      setMessages(prev => [...prev, { role: "assistant", content: "Please add VITE_GEMINI_API_KEY to your .env.local file to enable AI advice." }]);
       setLoading(false);
       return;
     }
@@ -611,14 +611,18 @@ const AIAdvisorPanel = ({ roomData, furniture, appliedStyle, t, onClose }) => {
 
     try {
       const history = messages.slice(1).concat({ role: "user", content: userText });
-      const res = await fetch("https://api.openai.com/v1/chat/completions", {
+      const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`, {
         method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
-        body: JSON.stringify({ model: "gpt-4o", messages: [{ role: "system", content: systemPrompt }, ...history], max_tokens: 200 }),
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          systemInstruction: { parts: [{ text: systemPrompt }] },
+          contents: history.map(m => ({ role: m.role === "assistant" ? "model" : "user", parts: [{ text: m.content }] })),
+          generationConfig: { maxOutputTokens: 200 },
+        }),
       });
       const data = await res.json();
       if (data.error) throw new Error(data.error.message);
-      setMessages(prev => [...prev, { role: "assistant", content: data.choices[0].message.content }]);
+      setMessages(prev => [...prev, { role: "assistant", content: data.candidates[0].content.parts[0].text }]);
     } catch (e) {
       setMessages(prev => [...prev, { role: "assistant", content: `Error: ${e.message}` }]);
     }
@@ -632,7 +636,7 @@ const AIAdvisorPanel = ({ roomData, furniture, appliedStyle, t, onClose }) => {
           <div style={{ width: 34, height: 34, borderRadius: 10, background: t.accentSoft, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18 }}>🤖</div>
           <div>
             <p style={{ margin: 0, fontSize: 13, fontWeight: 700, color: t.text, fontFamily: "'DM Sans', sans-serif" }}>AI Design Advisor</p>
-            <p style={{ margin: 0, fontSize: 10, color: t.green, fontFamily: "'DM Sans', sans-serif" }}>● GPT-4o</p>
+            <p style={{ margin: 0, fontSize: 10, color: t.green, fontFamily: "'DM Sans', sans-serif" }}>● Gemini 2.0 Flash</p>
           </div>
         </div>
         <button onClick={onClose} style={{ background: t.surface, border: "none", borderRadius: 8, width: 28, height: 28, cursor: "pointer", fontSize: 18, color: t.textSec, display: "flex", alignItems: "center", justifyContent: "center" }}>×</button>
@@ -677,9 +681,9 @@ const VisualizationModal = ({ roomData, appliedStyle, furniture, t, onClose }) =
     setError(null);
     setImageUrl(null);
 
-    const apiKey = import.meta.env.VITE_OPENAI_API_KEY;
-    if (!apiKey || apiKey.startsWith("sk-your")) {
-      setError("Add VITE_OPENAI_API_KEY to .env.local to enable visualization.");
+    const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
+    if (!apiKey) {
+      setError("Add VITE_GEMINI_API_KEY to .env.local to enable visualization.");
       setLoading(false);
       return;
     }
