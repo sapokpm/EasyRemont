@@ -609,23 +609,37 @@ const AIAdvisorPanel = ({ roomData, furniture, appliedStyle, t, onClose }) => {
 
     const systemPrompt = `You are a concise interior design advisor. Context: ${roomData?.roomType || "bedroom"}, ${roomData?.dims?.length ? `${roomData.dims.length}×${roomData.dims.width} cm` : "unknown size"}. Furniture placed: ${furniture.map(f => f.label).join(", ") || "none yet"}. Style: ${appliedStyle || "not selected"}. Give practical advice in 2-3 sentences max.`;
 
-    try {
-      const history = messages.slice(1).concat({ role: "user", content: userText });
-      const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          systemInstruction: { parts: [{ text: systemPrompt }] },
-          contents: history.map(m => ({ role: m.role === "assistant" ? "model" : "user", parts: [{ text: m.content }] })),
-          generationConfig: { maxOutputTokens: 200 },
-        }),
-      });
-      const data = await res.json();
-      if (data.error) throw new Error(data.error.message);
-      setMessages(prev => [...prev, { role: "assistant", content: data.candidates[0].content.parts[0].text }]);
-    } catch (e) {
-      setMessages(prev => [...prev, { role: "assistant", content: `Error: ${e.message}` }]);
+    const models = ["gemini-3.0-flash", "gemini-2.5-flash", "gemma-3-27b-it", "gemma-3-12b-it", "gemma-3-4b-it", "gemma-3-1b-it"];
+    const history = messages.slice(1).concat({ role: "user", content: userText });
+    const body = JSON.stringify({
+      systemInstruction: { parts: [{ text: systemPrompt }] },
+      contents: history.map(m => ({ role: m.role === "assistant" ? "model" : "user", parts: [{ text: m.content }] })),
+      generationConfig: { maxOutputTokens: 200 },
+    });
+
+    let lastError = null;
+    let replied = false;
+    for (const model of models) {
+      try {
+        const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body,
+        });
+        const data = await res.json();
+        if (data.error) {
+          const isQuota = data.error.code === 429 || (data.error.message || "").toLowerCase().includes("quota");
+          if (isQuota) { lastError = data.error.message; continue; }
+          throw new Error(data.error.message);
+        }
+        setMessages(prev => [...prev, { role: "assistant", content: data.candidates[0].content.parts[0].text }]);
+        replied = true;
+        break;
+      } catch (e) {
+        lastError = e.message;
+      }
     }
+    if (!replied) setMessages(prev => [...prev, { role: "assistant", content: `Error: ${lastError}` }]);
     setLoading(false);
   };
 
@@ -636,7 +650,7 @@ const AIAdvisorPanel = ({ roomData, furniture, appliedStyle, t, onClose }) => {
           <div style={{ width: 34, height: 34, borderRadius: 10, background: t.accentSoft, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18 }}>🤖</div>
           <div>
             <p style={{ margin: 0, fontSize: 13, fontWeight: 700, color: t.text, fontFamily: "'DM Sans', sans-serif" }}>AI Design Advisor</p>
-            <p style={{ margin: 0, fontSize: 10, color: t.green, fontFamily: "'DM Sans', sans-serif" }}>● Gemini 2.0 Flash</p>
+            <p style={{ margin: 0, fontSize: 10, color: t.green, fontFamily: "'DM Sans', sans-serif" }}>● Gemini Flash</p>
           </div>
         </div>
         <button onClick={onClose} style={{ background: t.surface, border: "none", borderRadius: 8, width: 28, height: 28, cursor: "pointer", fontSize: 18, color: t.textSec, display: "flex", alignItems: "center", justifyContent: "center" }}>×</button>
